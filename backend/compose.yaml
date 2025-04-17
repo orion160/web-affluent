@@ -1,0 +1,62 @@
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector:0.120.0
+    command:
+    volumes:
+      - ./compose/otel_collector/config.yaml:/etc/otelcol/config.yaml:ro,Z
+    ports:
+      - 4317:4317 # OTLP gRPC receiver
+      - 4318:4318 # OTLP http receiver
+  jaeger:
+    image: jaegertracing/jaeger:2.3.0
+    ports:
+      - 16686:16686 # UI
+      - 4317 # OTLP gRPC
+      - 4318 # OTLP HTTP JSON/Protobuf
+    depends_on:
+      - otel-collector
+  prometheus:
+    image: prom/prometheus:v3.2.0
+    command:
+      - --config.file=/etc/prometheus/config.yaml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-otlp-receiver
+    volumes:
+      - ./compose/prometheus/config.yaml:/etc/prometheus/config.yaml:ro,Z
+    ports:
+      - 9090:9090
+  grafana:
+    image: grafana/grafana:11.5.2
+    ports:
+      - 3000:3000
+    depends_on:
+      - prometheus
+  nginx:
+    image: nginx:1.27.4-otel
+    volumes:
+      - ./compose/nginx/nginx.conf:/etc/nginx/nginx.conf:ro,Z
+    ports:
+      - 8080:80
+  pg:
+    build:
+      context: ./compose/pg
+    environment:
+      POSTGRES_PASSWORD: passwd
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - 5432:5432
+    healthcheck:
+      test: pg_isready -U postgres -d postgres
+      start_period: 10s
+      start_interval: 5s
+      interval: 10s
+      timeout: 10s
+      retries: 5
+  affluent-backend:
+    build: .
+    ports:
+      - 3001:3001
+
+volumes:
+  pgdata:
